@@ -99,6 +99,7 @@ import android.view.WindowManager;
 import android.view.WindowManagerGlobal;
 import android.renderscript.RenderScriptCacheDir;
 import android.security.keystore.AndroidKeyStoreProvider;
+import android.system.Os;
 
 import com.android.internal.app.IVoiceInteractor;
 import com.android.internal.content.ReferrerIntent;
@@ -3836,6 +3837,15 @@ public final class ActivityThread {
         }
         mActivities.remove(token);
         StrictMode.decrementExpectedActivityCount(activityClass);
+
+	// Initialize the incognito mode
+        Slog.e(TAG, "Kishore: Incognito stop");
+        if (Os.stopIncognito()) {
+            Slog.e(TAG, "Kishore Incognito stop successful");
+        } else {
+            Slog.e(TAG, "Kishore Incognito stop failed");
+        }
+
         return r;
     }
 
@@ -4443,6 +4453,14 @@ public final class ActivityThread {
             mProfiler.profileFd = data.initProfilerInfo.profileFd;
             mProfiler.samplingInterval = data.initProfilerInfo.samplingInterval;
             mProfiler.autoStopProfiler = data.initProfilerInfo.autoStopProfiler;
+        }
+
+        // Initialize the incognito mode
+        Slog.e(TAG, "Kishore: Incognito init");
+        if (Os.initIncognito(true)) {
+            Slog.e(TAG, "Kishore Incognito init successful");
+        } else {
+            Slog.e(TAG, "Kishore Incognito init failed");
         }
 
         // send up app name; do this *before* waiting for debugger
