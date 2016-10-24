@@ -3838,7 +3838,7 @@ public final class ActivityThread {
         mActivities.remove(token);
         StrictMode.decrementExpectedActivityCount(activityClass);
 
-	// Initialize the incognito mode
+	// Stop incognito mode
         Slog.e(TAG, "Kishore: Incognito stop");
         if (Os.stopIncognito()) {
             Slog.e(TAG, "Kishore Incognito stop successful");
