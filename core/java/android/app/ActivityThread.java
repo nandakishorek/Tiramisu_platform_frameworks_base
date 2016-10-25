@@ -3838,14 +3838,6 @@ public final class ActivityThread {
         mActivities.remove(token);
         StrictMode.decrementExpectedActivityCount(activityClass);
 
-	// Stop incognito mode
-        Slog.e(TAG, "Kishore: Incognito stop");
-        if (Os.stopIncognito()) {
-            Slog.e(TAG, "Kishore Incognito stop successful");
-        } else {
-            Slog.e(TAG, "Kishore Incognito stop failed");
-        }
-
         return r;
     }
 
@@ -3912,6 +3904,16 @@ public final class ActivityThread {
             }
         }
         mSomeActivitiesChanged = true;
+
+        // Stop incognito mode if this main activity was destroyed
+        Slog.e(TAG, "Kishore: mNumVisibleActivities =" + mNumVisibleActivities);
+        if (mNumVisibleActivities == 0) {
+            if (Os.stopIncognito()) {
+                Slog.e(TAG, "Kishore Incognito stop successful");
+            } else {
+                Slog.e(TAG, "Kishore Incognito stop failed");
+            }
+        }
     }
 
     public final void requestRelaunchActivity(IBinder token,
