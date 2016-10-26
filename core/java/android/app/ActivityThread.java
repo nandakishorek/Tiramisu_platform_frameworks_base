@@ -195,6 +195,7 @@ public final class ActivityThread {
     ActivityClientRecord mNewActivities = null;
     // Number of activities that are currently visible on-screen.
     int mNumVisibleActivities = 0;
+	boolean appIncognitoState = false;
     WeakReference<AssistStructure> mLastAssistStructure;
     final ArrayMap<IBinder, Service> mServices = new ArrayMap<>();
     AppBindData mBoundApplication;
@@ -1341,49 +1342,6 @@ public final class ActivityThread {
             }
             return Integer.toString(code);
         }
-		boolean getAppIncognitoState(String packageName, File f) {
-			FileInputStream fios;
-			try {
-				FileReader fileReader = new FileReader(f);
-
-				BufferedReader bufferedReader =
-								new BufferedReader(fileReader);
-
-				String line = null;
-				String[] temp = new String[2];
-				boolean appFound = false;
-				while((line = bufferedReader.readLine()) != null) {
-					if (line.contains(packageName)) {
-						appFound = true;
-						temp = line.split("#");
-					}
-				}
-				bufferedReader.close();
-
-				if (appFound && temp[1].matches("ON")) {
-					return true;
-				}
-			} catch (FileNotFoundException e) {
-				Log.d("Tiramisu", "App does not have permission to read external storage");
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-
-			return false;
-		}
-
-		public boolean isExternalStorageAvailable(boolean needWriteAccess) {
-        	String state = Environment.getExternalStorageState();
-        	Log.e("Tiramisu", "storage state is " + state);
-
-        	if (Environment.MEDIA_MOUNTED.equals(state)) {
-        	    return true;
-        	} else if (!needWriteAccess &&
-                Environment.MEDIA_MOUNTED_READ_ONLY.equals(state)) {
-           		return true;
-       		}
-        	return false;
-   		}
         public void handleMessage(Message msg) {
             if (DEBUG_MESSAGES) Slog.v(TAG, ">>> handling: " + codeToString(msg.what));
             switch (msg.what) {
@@ -1396,19 +1354,6 @@ public final class ActivityThread {
 					Application incognitoApp = r.packageInfo.makeApplication(false, mInstrumentation);
 					String incogPackageName = incognitoApp.getPackageName();
 
-					if(isExternalStorageAvailable(true)) {
-						try {
-							File f = new File("/sdcard/incog.txt");
-							if (!f.exists()) {
-								Log.d("Tiramisu", "/sdcard/incog.txt file does not exist");
-							} else {
-								boolean incognitoMode = getAppIncognitoState(incogPackageName, f);
-								Log.d("Tiramisu", incogPackageName + " is started in " + incognitoMode);
-							}
-						} catch (Exception e) {
-							Log.e("Tiramisu", "cannot get package info for " + e.toString());
-						}
-					}
                     handleLaunchActivity(r, null);
                     Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
                 } break;
@@ -3973,13 +3918,14 @@ public final class ActivityThread {
         mSomeActivitiesChanged = true;
 
         // Stop incognito mode if this main activity was destroyed
-        Slog.e(TAG, "Kishore: mNumVisibleActivities =" + mNumVisibleActivities);
-        if (mNumVisibleActivities == 0) {
-            //if (Os.stopIncognito()) {
-              //  Slog.e(TAG, "Kishore Incognito stop successful");
-            //} else {
-                Slog.e(TAG, "Kishore Incognito stop failed");
-            //}
+        Slog.e(TAG, "Tiramisu: mNumVisibleActivities =" + mNumVisibleActivities +
+					" App incognito state: " + appIncognitoState);
+        if (appIncognitoState && (mNumVisibleActivities == 0)) {
+            if (Os.stopIncognito()) {
+                Slog.e(TAG, "Tiramisu Incognito stop successful");
+            } else {
+                Slog.e(TAG, "Tiramisu Incognito stop failed");
+            }
         }
     }
 
@@ -4511,6 +4457,68 @@ public final class ActivityThread {
         }
     }
 
+	public boolean isExternalStorageAvailable(boolean needWriteAccess) {
+    	String state = Environment.getExternalStorageState();
+    	Log.e("Tiramisu", "storage state is " + state);
+
+    	if (Environment.MEDIA_MOUNTED.equals(state)) {
+    	    return true;
+    	} else if (!needWriteAccess &&
+            Environment.MEDIA_MOUNTED_READ_ONLY.equals(state)) {
+       		return true;
+   		}
+    	return false;
+	}
+	boolean getAppIncognitoState(String packageName, File f) {
+		FileInputStream fios;
+		try {
+			FileReader fileReader = new FileReader(f);
+
+			BufferedReader bufferedReader =
+							new BufferedReader(fileReader);
+
+			String line = null;
+			String[] temp = new String[2];
+			boolean appFound = false;
+			while((line = bufferedReader.readLine()) != null) {
+				Log.d("Tiramisu", "Configuration file:" + line);
+				if (line.contains(packageName)) {
+					appFound = true;
+					temp = line.split("#");
+				}
+			}
+			bufferedReader.close();
+
+			if (appFound && temp[1].matches("ON")) {
+				return true;
+			}
+		} catch (FileNotFoundException e) {
+			Log.d("Tiramisu", "App does not have permission to read external storage");
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+
+		return false;
+	}
+
+	public boolean readIncognitoState(String incogPackageName)  {
+		if(isExternalStorageAvailable(true /* needWriteAccess */)) {
+			try {
+				File f = new File("/sdcard/incog.txt");
+				if (!f.exists()) {
+					Log.d("Tiramisu", "/sdcard/incog.txt file does not exist");
+				} else {
+					boolean incognitoMode = getAppIncognitoState(incogPackageName, f);
+					Log.d("Tiramisu", incogPackageName + " is started in " + incognitoMode);
+					return incognitoMode;
+				}
+			} catch (Exception e) {
+				Log.e("Tiramisu", "cannot get package info for " + e.toString());
+			}
+		}
+		return false;
+	}
+
     private void handleBindApplication(AppBindData data) {
         mBoundApplication = data;
         mConfiguration = new Configuration(data.config);
@@ -4523,16 +4531,6 @@ public final class ActivityThread {
             mProfiler.samplingInterval = data.initProfilerInfo.samplingInterval;
             mProfiler.autoStopProfiler = data.initProfilerInfo.autoStopProfiler;
         }
-
-        // Initialize the incognito mode
-        Slog.e(TAG, "Kishore: Incognito init");
-		/*
-        if (Os.initIncognito(true)) {
-            Slog.e(TAG, "Kishore Incognito init successful");
-        } else {
-            Slog.e(TAG, "Kishore Incognito init failed");
-        }
-		*/
 
         // send up app name; do this *before* waiting for debugger
         Process.setArgV0(data.processName);
@@ -4585,6 +4583,17 @@ public final class ActivityThread {
         applyCompatConfiguration(mCurDefaultDisplayDpi);
 
         data.info = getPackageInfoNoCheck(data.appInfo, data.compatInfo);
+
+		appIncognitoState = readIncognitoState(data.info.getPackageName());
+		if (appIncognitoState) {
+        	// Initialize the incognito mode
+        	Slog.e(TAG, "Tiramisu: Incognito init");
+        	if (Os.initIncognito(true)) {
+        	    Slog.e(TAG, "Tiramisu Incognito init successful");
+        	} else {
+        	    Slog.e(TAG, "Tiramisu Incognito init failed");
+        	}
+		}
 
         /**
          * Switch this process to density compatibility mode if needed.
