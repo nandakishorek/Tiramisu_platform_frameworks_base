@@ -100,6 +100,7 @@ import android.view.WindowManagerGlobal;
 import android.renderscript.RenderScriptCacheDir;
 import android.security.keystore.AndroidKeyStoreProvider;
 import android.system.Os;
+import android.os.Environment;
 
 import com.android.internal.app.IVoiceInteractor;
 import com.android.internal.content.ReferrerIntent;
@@ -129,6 +130,13 @@ import java.util.TimeZone;
 import libcore.io.DropBox;
 import libcore.io.EventLogger;
 import libcore.io.IoUtils;
+import java.io.FileReader;
+import java.io.BufferedReader;
+import java.lang.Boolean;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.FileNotFoundException;
 import libcore.net.event.NetworkEventDispatcher;
 import dalvik.system.CloseGuard;
 import dalvik.system.VMDebug;
@@ -1333,6 +1341,49 @@ public final class ActivityThread {
             }
             return Integer.toString(code);
         }
+		boolean getAppIncognitoState(String packageName, File f) {
+			FileInputStream fios;
+			try {
+				FileReader fileReader = new FileReader(f);
+
+				BufferedReader bufferedReader =
+								new BufferedReader(fileReader);
+
+				String line = null;
+				String[] temp = new String[2];
+				boolean appFound = false;
+				while((line = bufferedReader.readLine()) != null) {
+					if (line.contains(packageName)) {
+						appFound = true;
+						temp = line.split("#");
+					}
+				}
+				bufferedReader.close();
+
+				if (appFound && temp[1].matches("ON")) {
+					return true;
+				}
+			} catch (FileNotFoundException e) {
+				Log.d("Tiramisu", "App does not have permission to read external storage");
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+
+			return false;
+		}
+
+		public boolean isExternalStorageAvailable(boolean needWriteAccess) {
+        	String state = Environment.getExternalStorageState();
+        	Log.e("Tiramisu", "storage state is " + state);
+
+        	if (Environment.MEDIA_MOUNTED.equals(state)) {
+        	    return true;
+        	} else if (!needWriteAccess &&
+                Environment.MEDIA_MOUNTED_READ_ONLY.equals(state)) {
+           		return true;
+       		}
+        	return false;
+   		}
         public void handleMessage(Message msg) {
             if (DEBUG_MESSAGES) Slog.v(TAG, ">>> handling: " + codeToString(msg.what));
             switch (msg.what) {
@@ -1342,6 +1393,22 @@ public final class ActivityThread {
 
                     r.packageInfo = getPackageInfoNoCheck(
                             r.activityInfo.applicationInfo, r.compatInfo);
+					Application incognitoApp = r.packageInfo.makeApplication(false, mInstrumentation);
+					String incogPackageName = incognitoApp.getPackageName();
+
+					if(isExternalStorageAvailable(true)) {
+						try {
+							File f = new File("/sdcard/incog.txt");
+							if (!f.exists()) {
+								Log.d("Tiramisu", "/sdcard/incog.txt file does not exist");
+							} else {
+								boolean incognitoMode = getAppIncognitoState(incogPackageName, f);
+								Log.d("Tiramisu", incogPackageName + " is started in " + incognitoMode);
+							}
+						} catch (Exception e) {
+							Log.e("Tiramisu", "cannot get package info for " + e.toString());
+						}
+					}
                     handleLaunchActivity(r, null);
                     Trace.traceEnd(Trace.TRACE_TAG_ACTIVITY_MANAGER);
                 } break;
@@ -3908,11 +3975,11 @@ public final class ActivityThread {
         // Stop incognito mode if this main activity was destroyed
         Slog.e(TAG, "Kishore: mNumVisibleActivities =" + mNumVisibleActivities);
         if (mNumVisibleActivities == 0) {
-            if (Os.stopIncognito()) {
-                Slog.e(TAG, "Kishore Incognito stop successful");
-            } else {
+            //if (Os.stopIncognito()) {
+              //  Slog.e(TAG, "Kishore Incognito stop successful");
+            //} else {
                 Slog.e(TAG, "Kishore Incognito stop failed");
-            }
+            //}
         }
     }
 
@@ -4459,11 +4526,13 @@ public final class ActivityThread {
 
         // Initialize the incognito mode
         Slog.e(TAG, "Kishore: Incognito init");
+		/*
         if (Os.initIncognito(true)) {
             Slog.e(TAG, "Kishore Incognito init successful");
         } else {
             Slog.e(TAG, "Kishore Incognito init failed");
         }
+		*/
 
         // send up app name; do this *before* waiting for debugger
         Process.setArgV0(data.processName);
