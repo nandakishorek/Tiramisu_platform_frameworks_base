@@ -223,6 +223,8 @@ public final class ActivityThread {
     boolean mJitEnabled = false;
     boolean mSomeActivitiesChanged = false;
 
+    private String appPackageName;
+
     // These can be accessed by multiple threads; mPackages is the lock.
     // XXX For now we keep around information about all packages we have
     // seen, not removing entries from this map.
@@ -2467,6 +2469,19 @@ public final class ActivityThread {
     }
 
     private void handleLaunchActivity(ActivityClientRecord r, Intent customIntent) {
+	if (mNumVisibleActivities == 0) {
+	    appIncognitoState = readIncognitoState(appPackageName);
+	    if (appIncognitoState) {
+		// Initialize the incognito mode
+		Slog.e(TAG, "Tiramisu: Incognito init");
+		if (Os.initIncognito(true)) {
+		    Slog.e(TAG, "Tiramisu Incognito init successful");
+		} else {
+		    Slog.e(TAG, "Tiramisu Incognito init failed");
+		}
+	    }
+	}
+
         // If we are getting ready to gc after going to the background, well
         // we are back active so skip it.
         unscheduleGcIdler();
@@ -3921,11 +3936,8 @@ public final class ActivityThread {
         Slog.e(TAG, "Tiramisu: mNumVisibleActivities =" + mNumVisibleActivities +
 					" App incognito state: " + appIncognitoState);
         if (appIncognitoState && (mNumVisibleActivities == 0)) {
-            if (Os.stopIncognito()) {
-                Slog.e(TAG, "Tiramisu Incognito stop successful");
-            } else {
-                Slog.e(TAG, "Tiramisu Incognito stop failed");
-            }
+            Os.stopIncognito();
+            Slog.e(TAG, "Tiramisu Incognito stop");
         }
     }
 
@@ -4581,9 +4593,9 @@ public final class ActivityThread {
         mResourcesManager.applyConfigurationToResourcesLocked(data.config, data.compatInfo);
         mCurDefaultDisplayDpi = data.config.densityDpi;
         applyCompatConfiguration(mCurDefaultDisplayDpi);
-
         data.info = getPackageInfoNoCheck(data.appInfo, data.compatInfo);
-
+	appPackageName = data.info.getPackageName();
+/*
 		appIncognitoState = readIncognitoState(data.info.getPackageName());
 		if (appIncognitoState) {
         	// Initialize the incognito mode
@@ -4594,7 +4606,7 @@ public final class ActivityThread {
         	    Slog.e(TAG, "Tiramisu Incognito init failed");
         	}
 		}
-
+*/
         /**
          * Switch this process to density compatibility mode if needed.
          */
