@@ -125,6 +125,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.TimeZone;
 
 import libcore.io.DropBox;
@@ -4483,27 +4484,19 @@ public final class ActivityThread {
 	}
 	boolean getAppIncognitoState(String packageName, File f) {
 		FileInputStream fios;
-		try {
-			FileReader fileReader = new FileReader(f);
-
-			BufferedReader bufferedReader =
-							new BufferedReader(fileReader);
-
-			String line = null;
-			String[] temp = new String[2];
-			boolean appFound = false;
-			while((line = bufferedReader.readLine()) != null) {
-				Log.d("Tiramisu", "Configuration file:" + line);
-				if (line.contains(packageName)) {
-					appFound = true;
-					temp = line.split("#");
-				}
-			}
-			bufferedReader.close();
-
-			if (appFound && temp[1].matches("ON")) {
-				return true;
-			}
+		try (FileReader fileReader = new FileReader(f)) {
+            Properties config = new Properties();
+            config.load(fileReader);
+            String value = config.getProperty(packageName);
+            if (value != null) {
+                switch(value) {
+                    case "true":
+                        return true;
+                    case "false":
+                    default:
+                        return false;
+                }
+            }
 		} catch (FileNotFoundException e) {
 			Log.d("Tiramisu", "App does not have permission to read external storage");
 		} catch (Exception e) {
@@ -4516,9 +4509,9 @@ public final class ActivityThread {
 	public boolean readIncognitoState(String incogPackageName)  {
 		if(isExternalStorageAvailable(true /* needWriteAccess */)) {
 			try {
-				File f = new File("/sdcard/incog.txt");
+				File f = new File("/sdcard/incog.config");
 				if (!f.exists()) {
-					Log.d("Tiramisu", "/sdcard/incog.txt file does not exist");
+					Log.d("Tiramisu", "/sdcard/incog.config file does not exist");
 				} else {
 					boolean incognitoMode = getAppIncognitoState(incogPackageName, f);
 					Log.d("Tiramisu", incogPackageName + " is started in " + incognitoMode);
@@ -4595,18 +4588,7 @@ public final class ActivityThread {
         applyCompatConfiguration(mCurDefaultDisplayDpi);
         data.info = getPackageInfoNoCheck(data.appInfo, data.compatInfo);
 	appPackageName = data.info.getPackageName();
-/*
-		appIncognitoState = readIncognitoState(data.info.getPackageName());
-		if (appIncognitoState) {
-        	// Initialize the incognito mode
-        	Slog.e(TAG, "Tiramisu: Incognito init");
-        	if (Os.initIncognito(true)) {
-        	    Slog.e(TAG, "Tiramisu Incognito init successful");
-        	} else {
-        	    Slog.e(TAG, "Tiramisu Incognito init failed");
-        	}
-		}
-*/
+
         /**
          * Switch this process to density compatibility mode if needed.
          */
