@@ -175,6 +175,7 @@ public final class ActivityThread {
     private static final int SQLITE_MEM_RELEASED_EVENT_LOG_TAG = 75003;
     private static final int LOG_AM_ON_PAUSE_CALLED = 30021;
     private static final int LOG_AM_ON_RESUME_CALLED = 30022;
+    private static final String INCONGNITO_SETTING_FILE = "/sdcard/incog.config";
 
     /** Type for IActivityManager.serviceDoneExecuting: anonymous operation */
     public static final int SERVICE_DONE_EXECUTING_ANON = 0;
@@ -4509,9 +4510,9 @@ public final class ActivityThread {
 	public boolean readIncognitoState(String incogPackageName)  {
 		if(isExternalStorageAvailable(true /* needWriteAccess */)) {
 			try {
-				File f = new File("/sdcard/incog.config");
+				File f = new File(INCONGNITO_SETTING_FILE);
 				if (!f.exists()) {
-					Log.d("Tiramisu", "/sdcard/incog.config file does not exist");
+					Log.d("Tiramisu", INCONGNITO_SETTING_FILE + " file does not exist");
 				} else {
 					boolean incognitoMode = getAppIncognitoState(incogPackageName, f);
 					Log.d("Tiramisu", incogPackageName + " is started in " + incognitoMode);
