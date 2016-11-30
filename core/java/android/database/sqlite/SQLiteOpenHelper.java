@@ -19,7 +19,18 @@ package android.database.sqlite;
 import android.content.Context;
 import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase.CursorFactory;
+import android.os.Environment;
 import android.util.Log;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.util.Properties;
 
 /**
  * A helper class to manage database creation and version management.
@@ -41,6 +52,8 @@ import android.util.Log;
  */
 public abstract class SQLiteOpenHelper {
     private static final String TAG = SQLiteOpenHelper.class.getSimpleName();
+    private static final String INCOGNITO_DB_PREFIX = "INCOGNITO_TIRAMISU_";
+    private static final String INCONGNITO_SETTING_FILE = "/sdcard/incog.config";
 
     // When true, getReadableDatabase returns a read-only database if it is just being opened.
     // The database handle is reopened in read/write mode when getWritableDatabase is called.
@@ -55,6 +68,8 @@ public abstract class SQLiteOpenHelper {
     private final CursorFactory mFactory;
     private final int mNewVersion;
 
+    private String mIncogDbPath;
+    private boolean mIsIncognito;
     private SQLiteDatabase mDatabase;
     private boolean mIsInitializing;
     private boolean mEnableWriteAheadLogging;
@@ -99,10 +114,19 @@ public abstract class SQLiteOpenHelper {
         if (version < 1) throw new IllegalArgumentException("Version must be >= 1, was " + version);
 
         mContext = context;
-        mName = name;
         mFactory = factory;
         mNewVersion = version;
         mErrorHandler = errorHandler;
+
+        // read the incognito state and change the DB name accordingly
+        mIsIncognito = readIncognitoState(context.getPackageName());
+        Log.e(TAG, "Tiramisu: SQLiteOpenHelper - incognito " + mIsIncognito);
+        if (mIsIncognito) {
+            mName = INCOGNITO_DB_PREFIX + name;
+            Log.e(TAG, "Tiramisu: SQLiteOpenHelper Original DB name " + name + " changed " + mName);
+        } else {
+            mName = name;
+        }
     }
 
     /**
@@ -110,7 +134,64 @@ public abstract class SQLiteOpenHelper {
      * the constructor.
      */
     public String getDatabaseName() {
+        if (mIsIncognito) {
+            return mName.substring(INCOGNITO_DB_PREFIX.length());
+        }
         return mName;
+    }
+
+    private boolean readIncognitoState(String incogPackageName)  {
+        if(isExternalStorageAvailable(true /* needWriteAccess */)) {
+            try {
+                File f = new File(INCONGNITO_SETTING_FILE);
+                if (!f.exists()) {
+                    Log.d("Tiramisu", INCONGNITO_SETTING_FILE + " file does not exist");
+                } else {
+                    boolean incognitoMode = getAppIncognitoState(incogPackageName, f);
+                    Log.d("Tiramisu", incogPackageName + " is started in " + incognitoMode);
+                    return incognitoMode;
+                }
+            } catch (Exception e) {
+                Log.e("Tiramisu", "cannot get package info for " + e.toString());
+            }
+        }
+        return false;
+    }
+
+    public boolean isExternalStorageAvailable(boolean needWriteAccess) {
+        String state = Environment.getExternalStorageState();
+        Log.e("Tiramisu", "storage state is " + state);
+
+        if (Environment.MEDIA_MOUNTED.equals(state)) {
+            return true;
+        } else if (!needWriteAccess &&
+                Environment.MEDIA_MOUNTED_READ_ONLY.equals(state)) {
+            return true;
+        }
+        return false;
+    }
+    boolean getAppIncognitoState(String packageName, File f) {
+        FileInputStream fios;
+        try (FileReader fileReader = new FileReader(f)) {
+            Properties config = new Properties();
+            config.load(fileReader);
+            String value = config.getProperty(packageName);
+            if (value != null) {
+                switch(value) {
+                    case "true":
+                        return true;
+                    case "false":
+                    default:
+                        return false;
+                }
+            }
+        } catch (FileNotFoundException e) {
+            Log.d("Tiramisu", "App does not have permission to read external storage");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return false;
     }
 
     /**
@@ -214,6 +295,18 @@ public abstract class SQLiteOpenHelper {
             } else if (mName == null) {
                 db = SQLiteDatabase.create(null);
             } else {
+                if (mIsIncognito) {
+                    mIncogDbPath = mContext.getDatabasePath(mName).getPath();
+
+                    // delete the incognito database if it already exists
+                    if (mContext.deleteDatabase(mName)) {
+                        Log.e(TAG, "Tiramisu: existing incognito database " + mName + " deleted");
+                    }
+
+                    // copy the original database to an incognito DB
+                    copyOriginalDB();
+                }
+
                 try {
                     if (DEBUG_STRICT_READONLY && !writable) {
                         final String path = mContext.getDatabasePath(mName).getPath();
@@ -279,6 +372,26 @@ public abstract class SQLiteOpenHelper {
         }
     }
 
+    private void copyOriginalDB() {
+        String originalDbName = mName.substring(INCOGNITO_DB_PREFIX.length());
+        File originalDbFile = mContext.getDatabasePath(originalDbName);
+
+        try (InputStream is = new FileInputStream(originalDbFile);
+             OutputStream os = new FileOutputStream(new File(mIncogDbPath))) {
+            byte[] buf = new byte[4096];
+            int len;
+            while ((len = is.read(buf)) > 0) {
+                os.write(buf, 0, len);
+            }
+            Log.e(TAG, "Tiramisu: Original DB " + originalDbName + " cloned");
+        } catch (FileNotFoundException e) {
+            Log.e(TAG, "Tiramisu: Original DB " + originalDbName + " does not exist");
+        } catch (IOException e) {
+            Log.e(TAG, "Tiramisu: Error copying Original DB " + originalDbName);
+            e.printStackTrace();
+        }
+    }
+
     /**
      * Close any open database object.
      */
@@ -288,6 +401,11 @@ public abstract class SQLiteOpenHelper {
         if (mDatabase != null && mDatabase.isOpen()) {
             mDatabase.close();
             mDatabase = null;
+        }
+
+        if (mIsIncognito) {
+            // delete the incognito database
+            mContext.deleteDatabase(mName);
         }
     }
 
