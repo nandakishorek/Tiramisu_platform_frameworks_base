@@ -158,7 +158,7 @@ public abstract class SQLiteOpenHelper {
         return false;
     }
 
-    public boolean isExternalStorageAvailable(boolean needWriteAccess) {
+    private boolean isExternalStorageAvailable(boolean needWriteAccess) {
         String state = Environment.getExternalStorageState();
         Log.e("Tiramisu", "storage state is " + state);
 
@@ -170,7 +170,8 @@ public abstract class SQLiteOpenHelper {
         }
         return false;
     }
-    boolean getAppIncognitoState(String packageName, File f) {
+
+    private boolean getAppIncognitoState(String packageName, File f) {
         FileInputStream fios;
         try (FileReader fileReader = new FileReader(f)) {
             Properties config = new Properties();
